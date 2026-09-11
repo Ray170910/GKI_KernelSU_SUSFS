@@ -328,9 +328,9 @@ jobs:
         if: ${{ inputs.os_patch_level == 'lts' && inputs.sub_level != 'X' }}
         working-directory: ${{ env.KERNEL_ROOT }}/common
         run: |
-          TAG="android${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}_r00"
+          TAG="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}_r00"
           echo "Pinning common -> $TAG"
-          git fetch --depth=1 origin "refs/tags/$TAG"
+          git fetch --depth=1 https://android.googlesource.com/kernel/common "refs/tags/$TAG"
           git checkout --detach FETCH_HEAD
           grep -E '^(VERSION|PATCHLEVEL|SUBLEVEL)' Makefile
 
