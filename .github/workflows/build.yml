@@ -322,6 +322,18 @@ jobs:
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
           echo "REMOTE_BRANCH=$REMOTE_BRANCH" >> $GITHUB_ENV
 
+      # lts 分支头部持续滚动, 补丁按固定 SUBLEVEL 制作; 需 pin 到对应 KMI tag
+      # 才能保证源码与补丁一致 (如 6.12.77 仅存在 tag android16-6.12.77_r00)
+      - name: 🔖 Pin kernel/common 到指定 KMI tag
+        if: ${{ inputs.os_patch_level == 'lts' && inputs.sub_level != 'X' }}
+        working-directory: ${{ env.KERNEL_ROOT }}/common
+        run: |
+          TAG="android${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}_r00"
+          echo "Pinning common -> $TAG"
+          git fetch --depth=1 origin "refs/tags/$TAG"
+          git checkout --detach FETCH_HEAD
+          grep -E '^(VERSION|PATCHLEVEL|SUBLEVEL)' Makefile
+
       - name: 应用 Stock Config 伪装
         run: |
           STOCK_SRC="$GITHUB_WORKSPACE/config/stock_defconfig"
