@@ -21,6 +21,19 @@ on:
         required: true
         type: string
 
+      # ==================== 自定义源码 (设备厂商内核树) ====================
+      # 非空时: repo sync 照常执行 (提供 kleaf/build 工具链配套), 之后用该仓库
+      # 分支覆盖 common/。要求该树为 GKI 结构 (根含 BUILD.bazel / kernel/Makefile /
+      # arch/arm64/configs/gki_defconfig), 如 MiCode 小米开源树 yili-w-oss。
+      custom_source_repo:
+        required: false
+        type: string
+        default: ""
+      custom_source_ref:
+        required: false
+        type: string
+        default: ""
+
       # ==================== KernelSU 配置 ====================
       ksu_variant:
         required: true
@@ -322,10 +335,22 @@ jobs:
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
           echo "REMOTE_BRANCH=$REMOTE_BRANCH" >> $GITHUB_ENV
 
+      # 自定义设备源码: 覆盖 repo sync 拉的 AOSP common, 保留 build/tools 配套
+      - name: 📱 使用自定义设备内核源码
+        if: ${{ inputs.custom_source_repo != '' }}
+        working-directory: ${{ env.KERNEL_ROOT }}
+        run: |
+          CUSTOM_REF="${{ inputs.custom_source_ref }}"
+          [ -n "$CUSTOM_REF" ] || { echo "::error::custom_source_repo 已指定但 custom_source_ref 为空"; exit 1; }
+          echo "使用自定义源码: ${{ inputs.custom_source_repo }} @ $CUSTOM_REF"
+          rm -rf ./common
+          git clone --depth=1 -b "$CUSTOM_REF" "${{ inputs.custom_source_repo }}" ./common
+          grep -E '^(VERSION|PATCHLEVEL|SUBLEVEL)' ./common/Makefile
+
       # lts 分支头部持续滚动, 补丁按固定 SUBLEVEL 制作; 需 pin 到对应 KMI tag
       # 才能保证源码与补丁一致 (如 6.12.77 仅存在 tag android16-6.12.77_r00)
       - name: 🔖 Pin kernel/common 到指定 KMI tag
-        if: ${{ inputs.os_patch_level == 'lts' && inputs.sub_level != 'X' }}
+        if: ${{ inputs.os_patch_level == 'lts' && inputs.sub_level != 'X' && inputs.custom_source_repo == '' }}
         working-directory: ${{ env.KERNEL_ROOT }}/common
         run: |
           TAG="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}_r00"
@@ -334,7 +359,10 @@ jobs:
           git checkout --detach FETCH_HEAD
           grep -E '^(VERSION|PATCHLEVEL|SUBLEVEL)' Makefile
 
+      # 自定义设备源码模式下跳过: 其 gki_defconfig 本身即出厂等价配置,
+      # 伪装成 AOSP stock_defconfig 反而暴露差异
       - name: 应用 Stock Config 伪装
+        if: ${{ inputs.custom_source_repo == '' }}
         run: |
           STOCK_SRC="$GITHUB_WORKSPACE/config/stock_defconfig"
           STOCK_DST="$KERNEL_ROOT/common/arch/arm64/configs/stock_defconfig"
